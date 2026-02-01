@@ -1,0 +1,32 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories
+vendor/
+
+# Project-specific build output directory 
+bin/
+build/
+
+# IDE and editor files
+.idea/         # JetBrains IDEs (GoLand, IntelliJ, etc.)
+.vscode/       # VS Code
+.cpcache/      # Leiningen cache
+*.swp          # Vim swap files
+
+# Operating system files
+.DS_Store      # macOS files
+Thumbs.db      # Windows files
+
+# Environment files
+.env
