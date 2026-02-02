@@ -1,9 +1,9 @@
 package userstore
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
-	"context"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -29,7 +29,7 @@ func NewDb(dbPath string) (Store, error) {
 		// by default sqlite does not check foreign_keys
 		// with this settings it does
 		"PRAGMA foreign_keys = ON;",
-		// if the db is lock it waits for 5 sec 
+		// if the db is lock it waits for 5 sec
 		// its good for concurrency and prevent the database is locked error
 		//  so it is future-proof
 		"PRAGMA busy_timeout=5000;",
@@ -64,10 +64,107 @@ func (s *sqlStore) Close() error {
 	return s.db.Close()
 }
 
-// temporary methods to compile the project without error 
-// will be implemented later 
-func (s *sqlStore) Create(ctx context.Context, user *User) error { return nil }
-func (s *sqlStore) GetById(ctx context.Context, id int64) (*User, error) { return nil, nil }
-func (s *sqlStore) ListAll(ctx context.Context) ([]User, error) { return nil, nil }
-func (s *sqlStore) Update(ctx context.Context, user *User) error { return nil }
-func (s *sqlStore) Delete(ctx context.Context, id int64) error { return nil }
+// CRUD 
+func (s *sqlStore) Create(ctx context.Context, user *User) error {
+	// Using transactions to make sure it is durable
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("Failed to begin transctions : %w", err)
+	}
+	// if there are some issues in transactions
+	// it will rollback the transaction
+	defer tx.Rollback()
+
+	// using ? to prevent sql injection from user.
+	query := `INSERT INTO users (username, email) VALUES (?, ?)`
+	result, err := tx.ExecContext(ctx, query, user.Username, user.Email)
+	if err != nil {
+		return fmt.Errorf("failed to insert user: %w", err)
+	}
+	// find last id to fill the user struct
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("failed to get the last insert id : %w", err)
+	}
+	user.ID = id
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction : %w", err)
+	}
+	return nil
+}
+func (s *sqlStore) GetById(ctx context.Context, id int64) (*User, error) {
+	var user User
+	query := `SELECT id, username, email, created_at FROM users WHERE id = ?`
+	
+	err := s.db.QueryRowContext(ctx, query, id).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.CreatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("Failed to get user: %w", err)
+	}
+	return &user, nil
+}
+func (s *sqlStore) ListAll(ctx context.Context) ([]User, error) {
+	query := `SELECT id, username, email, created_at FROM users`
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list users : %w", err)
+	}
+	// close rows to free database connection
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan user : %w", err)
+		}
+		users = append(users, u)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during rows iteration : %w", err)
+	}
+	return users, nil
+}
+func (s *sqlStore) Update(ctx context.Context, user *User) error {
+	query := `UPDATE users SET username = ?, email = ? WHERE id = ?`
+	result, err := s.db.ExecContext(ctx, query, user.Username, user.Email, user.ID)
+	if err != nil {
+		return fmt.Errorf("failed to update user : %w", err)
+	}
+
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+func (s *sqlStore) Delete(ctx context.Context, id int64) error {
+	query := `DELETE FROM users WHERE id = ?`
+	result, err := s.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete user : %w", err)
+	}
+
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrUserNotFound
+	}
+
+	return nil
+}
