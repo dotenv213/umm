@@ -30,3 +30,8 @@ Thumbs.db      # Windows files
 
 # Environment files
 .env
+
+# db
+*.db
+*.db-shm
+*.db-wal
