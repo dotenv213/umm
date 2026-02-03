@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -79,6 +80,9 @@ func (s *sqlStore) Create(ctx context.Context, user *User) error {
 	query := `INSERT INTO users (username, email) VALUES (?, ?)`
 	result, err := tx.ExecContext(ctx, query, user.Username, user.Email)
 	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed"){
+			return ErrDuplicateUser
+		}
 		return fmt.Errorf("failed to insert user: %w", err)
 	}
 	// find last id to fill the user struct
